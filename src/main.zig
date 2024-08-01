@@ -13,7 +13,7 @@ pub fn Server(comptime T: type) type {
 
     return struct {
         ctx: T,
-
+        //
         allocator: std.mem.Allocator,
         handler: _HandlerType,
         pool: *Thread.Pool,
@@ -24,16 +24,16 @@ pub fn Server(comptime T: type) type {
         pub fn init(
             ctx: T,
             allocator: Allocator,
-        ) !Self {
+        ) !*Self {
             var pool = try allocator.create(Thread.Pool);
             try pool.init(.{ .allocator = allocator });
 
-            const self = Self{
-                .ctx = ctx,
-                .allocator = allocator,
-                .handler = undefined,
-                .pool = pool,
-            };
+            const self: *Self = try allocator.create(Self);
+
+            self.ctx = ctx;
+            self.allocator = allocator;
+            self.handler = undefined;
+            self.pool = pool;
 
             return self;
         }
@@ -45,7 +45,7 @@ pub fn Server(comptime T: type) type {
             self.allocator.destroy(self.pool); // Free the allocated pool
 
             // Stucks at deiniting pool
-            // _ = self.allocator.destroy(self);
+            _ = self.allocator.destroy(self);
         }
 
         pub fn set_handler(self: *@This(), function: _FunctionType, id: u8) void {
@@ -55,11 +55,16 @@ pub fn Server(comptime T: type) type {
             };
         }
 
-        pub fn execute_handler(self: @This()) void {
+        pub fn execute_handler(self: Self) void {
             self.handler.function(self.ctx) catch |err| {
                 std.debug.print("An error happened while executing handler {d}, {any}\n", .{ self.handler.id, err });
             };
             return;
+        }
+
+        pub fn execute_all(self: Self) !void {
+            const exec = Self.execute_handler;
+            _ = try self.pool.spawn(exec, .{self});
         }
 
         // more methods for Server(T) can be added here
@@ -80,7 +85,7 @@ pub fn main() !void {
 
     server.set_handler(my_handler_function, 1);
 
-    server.execute_handler();
+    _ = try server.execute_all();
 
     _ = server.deinit();
 }
